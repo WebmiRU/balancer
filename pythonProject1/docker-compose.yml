@@ -1,0 +1,65 @@
+version: "3"
+
+services:
+#  balancer_pyhon:
+#    container_name: balancer_python
+#    image: python:rc-alpine
+#    volumes:
+#      - ./:/var/www
+##      - ~/.ssh/keys/b220.ru/id_rsa:/root/.ssh/id_rsa
+##      - /var/run/balancer.sock:/var/run/balancer.sock:ro
+##      - nginx_conf:/etc/nginx/conf.d
+##    working_dir: /var/www/default/htdocs
+#    networks:
+#      - balancer
+
+#  balancer_nginx:
+#    container_name: balancer_nginx
+#    image: devilbox/nginx-stable
+#    volumes:
+#      - ./:/var/www/default/htdocs
+#      - nginx_conf:/etc/nginx/conf.d
+#    environment:
+#      - PHP_FPM_ENABLE=1
+#      - PHP_FPM_SERVER_ADDR=balancer_php
+#      - MAIN_VHOST_DOCROOT=htdocs/public
+#      - balancer_LOGS=1
+#    networks:
+#      - balancer
+#    depends_on:
+#      - balancer_php
+#    ports:
+#      - 81:80
+#
+#  balancer_postgres:
+#    container_name: balancer_postgres
+#    image: postgres:13.3-alpine
+#    volumes:
+#      - db_data:/var/lib/postgresql/data
+#    environment:
+#      - POSTGRES_DB=balancer
+#      - POSTGRES_DATABSE=balancer
+#      - POSTGRES_USER=balancer
+#      - POSTGRES_PASSWORD=balancer
+#      - PGDATA=/var/lib/postgresql/data
+#    networks:
+#      - balancer
+#    ports:
+#      - 5115:5432
+
+  balancer_redis:
+    container_name: balancer_redis
+    image: redis:6
+    networks:
+      - balancer
+    ports:
+      - 6379:6379
+
+volumes:
+  db_data:
+    external: false
+  nginx_conf:
+    external: false
+
+networks:
+  balancer:
