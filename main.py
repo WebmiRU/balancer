@@ -1,59 +1,66 @@
-import asyncio
 import json
-from pprint import pprint
-import time
-import websockets
+import threading
 import docker
+from simple_websocket_server import WebSocketServer, WebSocket
+
+ws_clients = {}
+containers = {}
+client = docker.from_env()
 
 
-class Server:
-    ws_clients = {}
-    containers = {}
-    client = docker.from_env()
+class WsClient(WebSocket):
+    def handle(self):
+        self.send_message('MESSAGE: ' + self.data)
+        for k, v in containers.items():
+            # if v['name'] == 'redis_test':
+            self.send_message(json.dumps({'Name': v['name'], 'State': v['attrs']['State']['Running']}))
 
-    def __init__(self):
-        for container in self.client.containers.list(all=True):
-            self.container_set(container)
+    def connected(self):
+        global ws_clients
+        ws_clients[self] = self
 
-    def container_set(self, container):
-        key = container.attrs['Id']
-        value = {
-            'name': container.name,
-            'attrs': container.attrs,
-            'labels': container.labels
-        }
-
-        self.containers[key] = value
-
-    def docker_events(self):
-        for event in self.client.events(decode=True):
-            if event.get('id'):
-                container = self.client.containers.get(event['id'])
-                self.container_set(container)
-                self.ws_client_notify()
-                print('UPDATED!')
-
-    async def ws_client_notify(self):
-        for ws in self.ws_clients:
-            for k, v in self.containers.items():
-                await ws.send(json.dumps({'Name': v['name'], 'State': v['attrs']['State']['Running']}))
-
-    async def ws_handler(self, ws, path):
-        self.ws_clients[ws] = ws
-
-        try:
-            async for request in ws:
-                await self.ws_client_notify()
-                print("MESSAGE: " + request)
-        except:
-            self.ws_clients.pop(ws)
-
-    async def run(self):
-        await websockets.serve(self.ws_handler, '0.0.0.0', 6789)
-        # await self.docker_events()
-        await asyncio.gather(asyncio.to_thread(self.docker_events))
+    def handle_close(self):
+        global ws_clients
+        ws_clients.pop(self)
 
 
-server = Server()
-asyncio.run(server.run())
-# asyncio.get_event_loop().run_until_complete(server.run())
+def container_set(container):
+    key = container.attrs['Id']
+    value = {
+        'name': container.name,
+        'attrs': container.attrs,
+        'labels': container.labels
+    }
+
+    containers[key] = value
+
+
+def docker_events():
+    for event in client.events(decode=True):
+        if event.get('id'):
+            container = client.containers.get(event['id'])
+            container_set(container)
+            ws_client_notify()
+            print('UPDATED!')
+
+
+def ws_client_notify():
+    for ws in ws_clients:
+        for k, v in containers.items():
+            # if v['name'] == 'redis_test':
+            ws.send_message(json.dumps({'Name': v['name'], 'State': v['attrs']['State']['Running']}))
+
+
+def run():
+    for container in client.containers.list(all=True):
+        container_set(container)
+
+    server = WebSocketServer('0.0.0.0', 6789, WsClient)
+    server.serve_forever()
+
+
+t1 = threading.Thread(target=run)
+t2 = threading.Thread(target=docker_events)
+
+t1.start()
+t2.start()
