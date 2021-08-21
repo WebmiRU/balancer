@@ -1,17 +1,9 @@
-// import Vue from 'vue';
-// //import Alert from './Alert.vue';
-//
-// new Vue({
-//     el: '#app',
-// //    components: { Alert }
-// });
-
 import {createApp} from 'vue'
-import Alert from './Alert'
+import ContainerIndex from './components/Container/Index'
 
 
 createApp({
     components: {
-        Alert,
+        ContainerIndex,
     }
 }).mount('#app')

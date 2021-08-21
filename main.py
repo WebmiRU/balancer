@@ -1,19 +1,17 @@
 import json
 import threading
+
 import docker
 from simple_websocket_server import WebSocketServer, WebSocket
 
 ws_clients = {}
-containers = {}
+containers = []
 client = docker.from_env()
 
 
 class WsClient(WebSocket):
     def handle(self):
-        self.send_message('MESSAGE: ' + self.data)
-        for k, v in containers.items():
-            # if v['name'] == 'redis_test':
-            self.send_message(json.dumps({'Name': v['name'], 'State': v['attrs']['State']['Running']}))
+        ws_client_update_containers_list()
 
     def connected(self):
         global ws_clients
@@ -25,14 +23,19 @@ class WsClient(WebSocket):
 
 
 def container_set(container):
-    key = container.attrs['Id']
     value = {
         'name': container.name,
         'attrs': container.attrs,
         'labels': container.labels
     }
 
-    containers[key] = value
+    # Ищем индекс контейнера с таким же ID в списке
+    idx = next(iter([i for i, v in enumerate(containers) if v['attrs']['Id'] == value['attrs']['Id']]), None)
+
+    if idx is not None:
+        containers[idx] = value
+    else:
+        containers.append(value)
 
 
 def docker_events():
@@ -40,15 +43,17 @@ def docker_events():
         if event.get('id'):
             container = client.containers.get(event['id'])
             container_set(container)
-            ws_client_notify()
+            ws_client_update_containers_list()
             print('UPDATED!')
 
 
-def ws_client_notify():
+def ws_client_update_containers_list():
     for ws in ws_clients:
-        for k, v in containers.items():
-            # if v['name'] == 'redis_test':
-            ws.send_message(json.dumps({'Name': v['name'], 'State': v['attrs']['State']['Running']}))
+        ws.send_message(json.dumps({
+            'action': 'update',
+            'type': 'containers_list',
+            'data': containers,
+        }))
 
 
 def run():
