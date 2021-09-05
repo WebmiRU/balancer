@@ -5,6 +5,7 @@ mix
     .vue({version: 3})
     .browserSync({
         proxy: 'balancer.local',
+        port: 3003,
         files: [
             'index.html',
             'build/*',
