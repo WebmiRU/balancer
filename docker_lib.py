@@ -17,6 +17,7 @@ class Container:
         self.is_running = attrs['State']['Running']
         self.name = attrs['Name'][1:]
         self.image = attrs['Image']
+        self.labels = {}
 
 
 class EventContainer(ToJson):
@@ -35,7 +36,7 @@ class EventContainersAll(ToJson):
         self.data = containers
 
 
-class Docker(threading.Thread):
+class Docker(threading.Thread):  # Docker client
     __containers = {}
     updates_json = queue.Queue()
 
