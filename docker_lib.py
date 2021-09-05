@@ -6,29 +6,49 @@ import time
 import docker
 
 
+class ToJson:
+    def json(self):
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=False, indent=4)
+
+
 class Container:
     def __init__(self, attrs):
         self.id = attrs['Id']
         self.is_running = attrs['State']['Running']
-        self.name = attrs['Name']
+        self.name = attrs['Name'][1:]
+        self.image = attrs['Image']
 
-    def json(self):
-        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
+
+class EventContainer(ToJson):
+    def __init__(self, container):
+        self.type = 'EVENT:UPDATE'
+        self.target = 'CONTAINER'
+        self.platform = 'DOCKER'
+        self.data = container
+
+
+class EventContainersAll(ToJson):
+    def __init__(self, containers):
+        self.type = 'EVENT:UPDATE'
+        self.target = 'CONTAINERS_ALL'
+        self.platform = 'DOCKER'
+        self.data = containers
 
 
 class Docker(threading.Thread):
-    __containers = []
+    __containers = {}
     updates_json = queue.Queue()
 
     def __init__(self):
         super().__init__()
         self.client = docker.from_env()
+        self.update_all_containers()
 
     def get(self, container_id: str):
         pass
 
     def get_all(self):
-        pass
+        return EventContainersAll(self.__containers).json()
 
     def update_all_containers(self, try_counter=0):
         if try_counter > 0:
@@ -38,16 +58,18 @@ class Docker(threading.Thread):
         if try_counter > 10:  # FATAL ERROR
             pass
 
-        self.__containers.clear()
+        self.__containers = {}
 
         try:
             for container in self.client.containers.list(all=True):
+                print(json.dumps(container.attrs))
+                print('-' * 98)
                 item = Container(container.attrs)
-                self.__containers.append(item.json())
+                self.__containers[item.id] = item
 
             # Заменить на список всех контейнеров в JSON-формате
-            self.updates_json.put(None)
-            print(self.__containers)
+            containers_all = EventContainersAll(self.__containers)
+            self.updates_json.put(containers_all.json())
         except Exception as e:
             print("DOCKER NOT FOUND ALL ERR")
             print(e)
@@ -57,9 +79,14 @@ class Docker(threading.Thread):
         for event in self.client.events(decode=True):
             try:
                 if event.get('Type') == 'container':
-                    container_attrs = self.client.containers.get(event.get('id')).attrs
-                    container = Container(container_attrs)
-                    self.updates_json.put(container)
+                    get_container = self.client.containers.get(event.get('id'))
+                    get_container.reload()
+
+                    container = Container(get_container.attrs)
+                    self.__containers[container.id] = container
+
+                    event_container = EventContainer(container)
+                    self.updates_json.put(event_container.json())
                 else:
                     print("EVENT TYPE: %s" % event.get('Type'))
             # except docker.errors.NotFound:

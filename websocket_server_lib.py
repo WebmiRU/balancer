@@ -1,14 +1,40 @@
-from websocket_server import WebsocketServer
+import json
 import threading
+
+from websocket_server import WebsocketServer
+
+from docker_lib import Docker
+
+
+class Error:
+    def __init__(self, code: int = 0, message: str = None, data=None):
+        self.type = 'ERROR'
+        self.code = code
+        self.message = message
+        self.data = data
+
+    def json(self):
+        return json.dumps(self, default=lambda o: o.__dict__, sort_keys=False, indent=4)
 
 
 class WSServer(threading.Thread):
     def __init__(self):
         super().__init__()
+        self.server = WebsocketServer(5000, host='0.0.0.0')
+        self.docker_client = Docker()
+        self.docker_events_queue = self.docker_client.updates_json
+        self.docker_client.start()
 
-    def new_client(self, client, server):
+    def docker_events_queue_process(self):
+        while True:
+            update = self.docker_client.updates_json.get()
+            self.server.send_message_to_all(update)
+
+    @staticmethod
+    def new_client(client, server):
         server.send_message_to_all("Hey all, a new client has joined us")
 
+    @staticmethod
     def client_left(self, client, server):
         print("Client left")
 
@@ -16,8 +42,20 @@ class WSServer(threading.Thread):
         print("MESSAGE: %s" % message)
         server.send_message(client, "MESSAGE: %s" % message)
 
+        try:
+            msg = json.loads(message)
+            if msg['platform'] == 'DOCKER':  # for DOCKER platform
+                if msg['type'] == 'GET':
+                    if msg['target'] == 'CONTAINERS_ALL':
+                        server.send_message(client, self.docker_client.get_all())
+
+        except Exception as e:
+            server.send_message(client, Error(999, "Message processing error").json())
+            print(e)
+
     def run(self):
-        self.server = WebsocketServer(5000, host='0.0.0.0')
+        threading.Thread(target=self.docker_events_queue_process).start()
+
         self.server.set_fn_new_client(self.new_client)
         self.server.set_fn_client_left(self.client_left)
         self.server.set_fn_message_received(self.message_received)
